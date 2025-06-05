@@ -14,6 +14,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     username: '',
+    email: '',
     password: '',
     confirmPassword: ''
   });
@@ -39,7 +40,7 @@ const Login = () => {
 
     try {
       if (isLogin) {
-        const { error } = await signIn(formData.username, formData.password);
+        const { error } = await signIn(formData.email, formData.password);
         if (error) {
           toast({
             title: "Login Failed",
@@ -64,7 +65,7 @@ const Login = () => {
           return;
         }
 
-        const { error } = await signUp(formData.username, formData.password);
+        const { error } = await signUp(formData.username, formData.email, formData.password);
 
         if (error) {
           toast({
@@ -120,17 +121,33 @@ const Login = () => {
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Username */}
+              {/* Username (Register only) */}
+              {!isLogin && (
+                <div className="space-y-2">
+                  <Label htmlFor="username">Username</Label>
+                  <Input
+                    id="username"
+                    name="username"
+                    type="text"
+                    required
+                    value={formData.username}
+                    onChange={handleInputChange}
+                    placeholder="Enter your username"
+                  />
+                </div>
+              )}
+
+              {/* Email */}
               <div className="space-y-2">
-                <Label htmlFor="username">Username</Label>
+                <Label htmlFor="email">Email</Label>
                 <Input
-                  id="username"
-                  name="username"
-                  type="text"
+                  id="email"
+                  name="email"
+                  type="email"
                   required
-                  value={formData.username}
+                  value={formData.email}
                   onChange={handleInputChange}
-                  placeholder="Enter your username"
+                  placeholder="Enter your email"
                 />
               </div>
 
@@ -204,7 +221,7 @@ const Login = () => {
                 className="text-sm text-blue-600 hover:text-blue-500"
                 onClick={() => {
                   setIsLogin(!isLogin);
-                  setFormData({ username: '', password: '', confirmPassword: '' });
+                  setFormData({ username: '', email: '', password: '', confirmPassword: '' });
                 }}
               >
                 {isLogin 

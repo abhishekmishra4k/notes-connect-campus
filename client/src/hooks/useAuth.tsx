@@ -4,8 +4,8 @@ import type { User } from '@shared/schema';
 
 interface AuthContextType {
   user: User | null;
-  signUp: (username: string, password: string) => Promise<{ error: any }>;
-  signIn: (username: string, password: string) => Promise<{ error: any }>;
+  signUp: (username: string, email: string, password: string) => Promise<{ error: any }>;
+  signIn: (email: string, password: string) => Promise<{ error: any }>;
   signOut: () => Promise<void>;
   loading: boolean;
 }
@@ -20,9 +20,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Check if user is logged in
     const checkAuth = async () => {
       try {
-        const userData = await apiRequest('/api/auth/me');
-        setUser(userData);
+        const token = localStorage.getItem('authToken');
+        if (!token) {
+          setLoading(false);
+          return;
+        }
+
+        const response = await fetch('/api/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setUser(data.user);
+        } else {
+          localStorage.removeItem('authToken');
+          setUser(null);
+        }
       } catch (error) {
+        localStorage.removeItem('authToken');
         setUser(null);
       } finally {
         setLoading(false);
@@ -32,27 +51,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     checkAuth();
   }, []);
 
-  const signUp = async (username: string, password: string) => {
+  const signUp = async (username: string, email: string, password: string) => {
     try {
-      const userData = await apiRequest('/api/auth/register', {
+      const response = await fetch('/api/auth/register', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, email, password }),
       });
-      setUser(userData);
-      return { error: null };
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('authToken', data.token);
+        setUser(data.user);
+        return { error: null };
+      } else {
+        return { error: data.message || 'Registration failed' };
+      }
     } catch (error: any) {
       return { error: error.message || 'Registration failed' };
     }
   };
 
-  const signIn = async (username: string, password: string) => {
+  const signIn = async (email: string, password: string) => {
     try {
-      const userData = await apiRequest('/api/auth/login', {
+      const response = await fetch('/api/auth/login', {
         method: 'POST',
-        body: JSON.stringify({ username, password }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
       });
-      setUser(userData);
-      return { error: null };
+
+      const data = await response.json();
+
+      if (response.ok) {
+        localStorage.setItem('authToken', data.token);
+        setUser(data.user);
+        return { error: null };
+      } else {
+        return { error: data.message || 'Login failed' };
+      }
     } catch (error: any) {
       return { error: error.message || 'Login failed' };
     }
@@ -60,10 +101,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     try {
-      await apiRequest('/api/auth/logout', { method: 'POST' });
-      setUser(null);
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        await fetch('/api/auth/logout', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+        });
+      }
     } catch (error) {
-      // Even if logout fails on server, clear local state
+      // Ignore logout errors
+    } finally {
+      localStorage.removeItem('authToken');
       setUser(null);
     }
   };
