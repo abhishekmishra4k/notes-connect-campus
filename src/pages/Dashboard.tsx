@@ -1,20 +1,34 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Upload, Download, Filter, BookOpen, User, LogOut, Star, Clock, Eye } from 'lucide-react';
+import { Search, Upload, Download, Filter, BookOpen, User, LogOut, Star, Clock, Eye, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
+import { useToast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadData, setUploadData] = useState({
+    title: '',
+    subject: '',
+    description: '',
+    file: null as File | null
+  });
+  const [isUploading, setIsUploading] = useState(false);
+
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchUserProfile = async () => {
@@ -41,7 +55,99 @@ const Dashboard = () => {
     navigate('/login');
   };
 
-  // Mock data for notes
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      // Check file type
+      if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
+        toast({
+          title: "Invalid file type",
+          description: "Please upload a PDF or image file (JPEG/PNG)",
+          variant: "destructive"
+        });
+        return;
+      }
+      // Check file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File too large",
+          description: "Maximum file size is 10MB",
+          variant: "destructive"
+        });
+        return;
+      }
+      setUploadData(prev => ({ ...prev, file }));
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!uploadData.file || !uploadData.title || !uploadData.subject) {
+      toast({
+        title: "Missing information",
+        description: "Please fill in all required fields and select a file",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsUploading(true);
+
+    try {
+      // Upload file to Supabase Storage
+      const fileExt = uploadData.file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).slice(2)}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      const { data: uploadData_, error: uploadError } = await supabase.storage
+        .from('notes')
+        .upload(filePath, uploadData.file);
+
+      if (uploadError) throw uploadError;
+
+      // Get public URL for the uploaded file
+      const { data: { publicUrl } } = supabase.storage
+        .from('notes')
+        .getPublicUrl(filePath);
+
+      // Create note record in the database
+      const { error: dbError } = await supabase
+        .from('notes')
+        .insert({
+          title: uploadData.title,
+          subject: uploadData.subject,
+          description: uploadData.description,
+          file_url: publicUrl,
+          file_type: uploadData.file.type,
+          file_size: uploadData.file.size,
+          user_id: user.id
+        });
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Success!",
+        description: "Your notes have been uploaded successfully",
+      });
+
+      setIsUploadModalOpen(false);
+      setUploadData({
+        title: '',
+        subject: '',
+        description: '',
+        file: null
+      });
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: "Upload failed",
+        description: "There was an error uploading your notes. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
   const notes = [
     {
       id: 1,
@@ -105,7 +211,6 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
@@ -115,7 +220,11 @@ const Dashboard = () => {
             </div>
             
             <div className="flex items-center space-x-4">
-              <Button variant="outline" size="sm">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setIsUploadModalOpen(true)}
+              >
                 <Upload className="w-4 h-4 mr-2" />
                 Upload Notes
               </Button>
@@ -133,8 +242,81 @@ const Dashboard = () => {
         </div>
       </header>
 
+      <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
+          <DialogHeader>
+            <DialogTitle>Upload Study Notes</DialogTitle>
+            <DialogDescription>
+              Share your notes with other students. Supported formats: PDF, JPEG, PNG
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="title">Title</Label>
+              <Input
+                id="title"
+                value={uploadData.title}
+                onChange={(e) => setUploadData(prev => ({ ...prev, title: e.target.value }))}
+                placeholder="e.g., Calculus I - Chapter 3 Notes"
+              />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="subject">Subject</Label>
+              <Select
+                value={uploadData.subject}
+                onValueChange={(value) => setUploadData(prev => ({ ...prev, subject: value }))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {subjects.map(subject => (
+                    <SelectItem key={subject} value={subject}>
+                      {subject}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                value={uploadData.description}
+                onChange={(e) => setUploadData(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Add a brief description of your notes..."
+              />
+            </div>
+            
+            <div className="grid gap-2">
+              <Label htmlFor="file">File</Label>
+              <Input
+                id="file"
+                type="file"
+                accept=".pdf,.jpg,.jpeg,.png"
+                onChange={handleFileChange}
+              />
+              <p className="text-sm text-gray-500">
+                Maximum file size: 10MB
+              </p>
+            </div>
+          </div>
+          
+          <div className="flex justify-end gap-4">
+            <DialogClose asChild>
+              <Button variant="outline">Cancel</Button>
+            </DialogClose>
+            <Button onClick={handleUpload} disabled={isUploading}>
+              {isUploading ? 'Uploading...' : 'Upload'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Welcome Section */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900 mb-2">
             Welcome back, {userProfile?.first_name || 'User'}!
@@ -144,7 +326,6 @@ const Dashboard = () => {
           </p>
         </div>
 
-        {/* Search and Filter Section */}
         <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
           <div className="flex flex-col md:flex-row gap-4">
             <div className="flex-1 relative">
@@ -171,7 +352,6 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
@@ -222,7 +402,6 @@ const Dashboard = () => {
           </Card>
         </div>
 
-        {/* Notes Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredNotes.map(note => (
             <Card key={note.id} className="hover:shadow-lg transition-shadow cursor-pointer">
