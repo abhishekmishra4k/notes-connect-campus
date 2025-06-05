@@ -1,15 +1,18 @@
 
-import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { Eye, EyeOff, BookOpen } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [isLogin, setIsLogin] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -19,14 +22,92 @@ const Login = () => {
     university: ''
   });
 
+  const { signIn, signUp, user } = useAuth();
+  const { toast } = useToast();
+  const navigate = useNavigate();
+
+  // Redirect if already logged in
+  useEffect(() => {
+    if (user) {
+      navigate('/dashboard');
+    }
+  }, [user, navigate]);
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log('Form submitted:', formData);
-    // Authentication logic will be handled by Supabase
+    setLoading(true);
+
+    try {
+      if (isLogin) {
+        const { error } = await signIn(formData.email, formData.password);
+        if (error) {
+          toast({
+            title: "Login Failed",
+            description: error.message,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Welcome back!",
+            description: "You have successfully logged in.",
+          });
+        }
+      } else {
+        // Validate passwords match
+        if (formData.password !== formData.confirmPassword) {
+          toast({
+            title: "Password Mismatch",
+            description: "Passwords do not match. Please try again.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+
+        // Validate required fields
+        if (!formData.firstName || !formData.lastName || !formData.university) {
+          toast({
+            title: "Missing Information",
+            description: "Please fill in all required fields.",
+            variant: "destructive",
+          });
+          setLoading(false);
+          return;
+        }
+
+        const { error } = await signUp(formData.email, formData.password, {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          university: formData.university,
+        });
+
+        if (error) {
+          toast({
+            title: "Registration Failed",
+            description: error.message,
+            variant: "destructive",
+          });
+        } else {
+          toast({
+            title: "Registration Successful",
+            description: "Please check your email to verify your account.",
+          });
+          setIsLogin(true); // Switch to login mode after successful registration
+        }
+      }
+    } catch (error) {
+      toast({
+        title: "An Error Occurred",
+        description: "Please try again later.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -61,6 +142,7 @@ const Login = () => {
                       value={formData.firstName}
                       onChange={handleInputChange}
                       required
+                      disabled={loading}
                     />
                   </div>
                   <div className="space-y-2">
@@ -71,6 +153,7 @@ const Login = () => {
                       value={formData.lastName}
                       onChange={handleInputChange}
                       required
+                      disabled={loading}
                     />
                   </div>
                 </div>
@@ -84,6 +167,7 @@ const Login = () => {
                     value={formData.university}
                     onChange={handleInputChange}
                     required
+                    disabled={loading}
                   />
                 </div>
               </>
@@ -99,6 +183,7 @@ const Login = () => {
                 value={formData.email}
                 onChange={handleInputChange}
                 required
+                disabled={loading}
               />
             </div>
             
@@ -112,11 +197,13 @@ const Login = () => {
                   value={formData.password}
                   onChange={handleInputChange}
                   required
+                  disabled={loading}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  disabled={loading}
                 >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
@@ -133,6 +220,7 @@ const Login = () => {
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
                   required
+                  disabled={loading}
                 />
               </div>
             )}
@@ -149,8 +237,12 @@ const Login = () => {
               </div>
             )}
             
-            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700">
-              {isLogin ? 'Sign In' : 'Create Account'}
+            <Button 
+              type="submit" 
+              className="w-full bg-blue-600 hover:bg-blue-700"
+              disabled={loading}
+            >
+              {loading ? 'Please wait...' : (isLogin ? 'Sign In' : 'Create Account')}
             </Button>
           </form>
           
@@ -160,6 +252,7 @@ const Login = () => {
               <button
                 onClick={() => setIsLogin(!isLogin)}
                 className="ml-2 text-blue-600 hover:text-blue-800 font-medium"
+                disabled={loading}
               >
                 {isLogin ? 'Sign up' : 'Sign in'}
               </button>
