@@ -1,18 +1,73 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { insertUserSchema, loginSchema, insertNoteSchema } from "@shared/schema";
-import { User } from "./models/User";
-import { Note } from "./models/Note";
-import { generateToken, verifyToken, AuthRequest } from "./middleware/auth";
 import { upload } from "./middleware/upload";
-import connectDB from "./config/database";
 import path from "path";
 import fs from "fs";
 import { z } from "zod";
+import jwt from 'jsonwebtoken';
+import bcrypt from 'bcrypt';
+
+// In-memory storage for demo
+interface User {
+  _id: string;
+  username: string;
+  email: string;
+  password: string;
+  role: 'user' | 'admin';
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+interface Note {
+  _id: string;
+  title: string;
+  subject: string;
+  description?: string;
+  fileName: string;
+  originalName: string;
+  mimeType: string;
+  size: number;
+  uploadedBy: string;
+  downloads: number;
+  rating: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const users: Map<string, User> = new Map();
+const notes: Map<string, Note> = new Map();
+const sessions: Map<string, string> = new Map(); // token -> userId
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+const generateToken = (userId: string): string => {
+  return jwt.sign({ userId }, JWT_SECRET, { expiresIn: '7d' });
+};
+
+const verifyToken = (req: any, res: any, next: any) => {
+  try {
+    const token = req.header('Authorization')?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    const user = users.get(decoded.userId);
+    
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+
+    req.user = user;
+    next();
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid token' });
+  }
+};
 
 export async function registerRoutes(app: Express): Promise<Server> {
-  // Connect to MongoDB
-  await connectDB();
 
   // Authentication routes
   app.post("/api/auth/register", async (req, res) => {
@@ -20,9 +75,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const userData = insertUserSchema.parse(req.body);
       
       // Check if user already exists
-      const existingUser = await User.findOne({
-        $or: [{ email: userData.email }, { username: userData.username }]
-      });
+      const existingUser = Array.from(users.values()).find(
+        user => user.email === userData.email || user.username === userData.username
+      );
       
       if (existingUser) {
         return res.status(400).json({ 
@@ -30,10 +85,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const user = new User(userData);
-      await user.save();
+      const hashedPassword = await bcrypt.hash(userData.password, 10);
+      const userId = Date.now().toString();
+      const user: User = {
+        _id: userId,
+        username: userData.username,
+        email: userData.email,
+        password: hashedPassword,
+        role: userData.role || 'user',
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      users.set(userId, user);
       
-      const token = generateToken(user._id.toString());
+      const token = generateToken(userId);
+      sessions.set(token, userId);
       
       res.json({
         token,
@@ -59,12 +126,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { email, password } = loginSchema.parse(req.body);
       
-      const user = await User.findOne({ email });
-      if (!user || !(await user.comparePassword(password))) {
+      const user = Array.from(users.values()).find(u => u.email === email);
+      if (!user || !(await bcrypt.compare(password, user.password))) {
         return res.status(401).json({ message: "Invalid email or password" });
       }
 
-      const token = generateToken(user._id.toString());
+      const token = generateToken(user._id);
+      sessions.set(token, user._id);
       
       res.json({
         token,
@@ -86,15 +154,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/auth/me", verifyToken, async (req: AuthRequest, res) => {
+  app.get("/api/auth/me", verifyToken, async (req: any, res) => {
     res.json({
       user: {
-        _id: req.user!._id,
-        username: req.user!.username,
-        email: req.user!.email,
-        role: req.user!.role,
-        createdAt: req.user!.createdAt,
-        updatedAt: req.user!.updatedAt
+        _id: req.user._id,
+        username: req.user.username,
+        email: req.user.email,
+        role: req.user.role,
+        createdAt: req.user.createdAt,
+        updatedAt: req.user.updatedAt
       }
     });
   });
@@ -104,7 +172,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Notes routes
-  app.post("/api/notes/upload", verifyToken, upload.single('file'), async (req: AuthRequest, res) => {
+  app.post("/api/notes/upload", verifyToken, upload.single('file'), async (req: any, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ message: "No file uploaded" });
@@ -120,15 +188,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
         size: req.file.size,
-        uploadedBy: req.user!._id
       };
 
       insertNoteSchema.parse(noteData);
 
-      const note = new Note(noteData);
-      await note.save();
-      
-      await note.populate('uploadedBy', 'username email');
+      const noteId = Date.now().toString();
+      const note: Note = {
+        _id: noteId,
+        title,
+        subject,
+        description,
+        fileName: req.file.filename,
+        originalName: req.file.originalname,
+        mimeType: req.file.mimetype,
+        size: req.file.size,
+        uploadedBy: req.user._id,
+        downloads: 0,
+        rating: 0,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+
+      notes.set(noteId, note);
 
       res.json({ message: "File uploaded successfully", note });
     } catch (error) {
@@ -144,34 +225,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { subject, search, page = 1, limit = 10 } = req.query;
       
-      const query: any = {};
+      let filteredNotes = Array.from(notes.values());
       
       if (subject && subject !== 'all') {
-        query.subject = subject;
+        filteredNotes = filteredNotes.filter(note => note.subject === subject);
       }
       
       if (search) {
-        query.$or = [
-          { title: { $regex: search, $options: 'i' } },
-          { description: { $regex: search, $options: 'i' } }
-        ];
+        const searchTerm = (search as string).toLowerCase();
+        filteredNotes = filteredNotes.filter(note => 
+          note.title.toLowerCase().includes(searchTerm) ||
+          (note.description && note.description.toLowerCase().includes(searchTerm))
+        );
       }
 
-      const notes = await Note.find(query)
-        .populate('uploadedBy', 'username email')
-        .sort({ createdAt: -1 })
-        .limit(Number(limit) * 1)
-        .skip((Number(page) - 1) * Number(limit));
+      // Sort by creation date (newest first)
+      filteredNotes.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
 
-      const total = await Note.countDocuments(query);
+      // Pagination
+      const startIndex = (Number(page) - 1) * Number(limit);
+      const paginatedNotes = filteredNotes.slice(startIndex, startIndex + Number(limit));
+
+      // Add user information
+      const notesWithUsers = paginatedNotes.map(note => ({
+        ...note,
+        uploadedBy: {
+          _id: note.uploadedBy,
+          username: users.get(note.uploadedBy)?.username || 'Unknown',
+          email: users.get(note.uploadedBy)?.email || ''
+        }
+      }));
 
       res.json({
-        notes,
+        notes: notesWithUsers,
         pagination: {
           page: Number(page),
           limit: Number(limit),
-          total,
-          pages: Math.ceil(total / Number(limit))
+          total: filteredNotes.length,
+          pages: Math.ceil(filteredNotes.length / Number(limit))
         }
       });
     } catch (error) {
@@ -180,9 +271,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/notes/:id/download", verifyToken, async (req: AuthRequest, res) => {
+  app.get("/api/notes/:id/download", verifyToken, async (req: any, res) => {
     try {
-      const note = await Note.findById(req.params.id);
+      const note = notes.get(req.params.id);
       
       if (!note) {
         return res.status(404).json({ message: "Note not found" });
@@ -196,7 +287,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Increment download count
       note.downloads += 1;
-      await note.save();
+      notes.set(req.params.id, note);
 
       res.download(filePath, note.originalName);
     } catch (error) {
@@ -206,7 +297,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Serve uploaded files
-  app.use('/uploads', verifyToken, (req: AuthRequest, res, next) => {
+  app.use('/uploads', verifyToken, (req: any, res, next) => {
     // Only authenticated users can access files
     next();
   });
