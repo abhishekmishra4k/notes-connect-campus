@@ -1,15 +1,45 @@
-
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Search, Upload, Download, Filter, BookOpen, User, LogOut, Star, Clock, Eye } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useAuth } from '@/hooks/useAuth';
+import { supabase } from '@/integrations/supabase/client';
+import { useNavigate } from 'react-router-dom';
 
 const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const { user, signOut } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      if (user?.id) {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', user.id)
+          .single();
+
+        if (error) {
+          console.error('Error fetching user profile:', error);
+        } else {
+          setUserProfile(data);
+        }
+      }
+    };
+
+    fetchUserProfile();
+  }, [user]);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate('/login');
+  };
 
   // Mock data for notes
   const notes = [
@@ -91,9 +121,11 @@ const Dashboard = () => {
               </Button>
               <div className="flex items-center space-x-2">
                 <User className="w-5 h-5 text-gray-600" />
-                <span className="text-sm text-gray-700">John Doe</span>
+                <span className="text-sm text-gray-700">
+                  {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : 'Loading...'}
+                </span>
               </div>
-              <Button variant="ghost" size="sm">
+              <Button variant="ghost" size="sm" onClick={handleSignOut}>
                 <LogOut className="w-4 h-4" />
               </Button>
             </div>
@@ -104,8 +136,12 @@ const Dashboard = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">Welcome back, John!</h1>
-          <p className="text-gray-600">Discover and share study materials with students worldwide</p>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Welcome back, {userProfile?.first_name || 'User'}!
+          </h1>
+          <p className="text-gray-600">
+            {userProfile?.university ? `Student at ${userProfile.university}` : 'Discover and share study materials with students worldwide'}
+          </p>
         </div>
 
         {/* Search and Filter Section */}
