@@ -1,442 +1,184 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Upload, Download, Filter, BookOpen, User, LogOut, Star, Clock, Eye, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Search, Upload, BookOpen, User, LogOut, Star, Clock, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogClose } from '@/components/ui/dialog';
-import { Label } from '@/components/ui/label';
-import { Textarea } from '@/components/ui/textarea';
 import { useAuth } from '@/hooks/useAuth';
-import { supabase } from '@/integrations/supabase/client';
-import { useNavigate } from 'react-router-dom';
+import { useLocation } from 'wouter';
 import { useToast } from '@/hooks/use-toast';
 
 const Dashboard = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedSubject, setSelectedSubject] = useState('all');
-  const [userProfile, setUserProfile] = useState<any>(null);
-  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
-  const [uploadData, setUploadData] = useState({
-    title: '',
-    subject: '',
-    description: '',
-    file: null as File | null
-  });
-  const [isUploading, setIsUploading] = useState(false);
 
   const { user, signOut } = useAuth();
-  const navigate = useNavigate();
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
-
-  useEffect(() => {
-    const fetchUserProfile = async () => {
-      if (user?.id) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-
-        if (error) {
-          console.error('Error fetching user profile:', error);
-        } else {
-          setUserProfile(data);
-        }
-      }
-    };
-
-    fetchUserProfile();
-  }, [user]);
 
   const handleSignOut = async () => {
     await signOut();
-    navigate('/login');
+    setLocation('/');
+    toast({
+      title: "Signed out",
+      description: "You have been successfully signed out.",
+    });
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      // Check file type
-      if (!['application/pdf', 'image/jpeg', 'image/png'].includes(file.type)) {
-        toast({
-          title: "Invalid file type",
-          description: "Please upload a PDF or image file (JPEG/PNG)",
-          variant: "destructive"
-        });
-        return;
-      }
-      // Check file size (max 10MB)
-      if (file.size > 10 * 1024 * 1024) {
-        toast({
-          title: "File too large",
-          description: "Maximum file size is 10MB",
-          variant: "destructive"
-        });
-        return;
-      }
-      setUploadData(prev => ({ ...prev, file }));
-    }
-  };
-
-  const handleUpload = async () => {
-    if (!uploadData.file || !uploadData.title || !uploadData.subject) {
-      toast({
-        title: "Missing information",
-        description: "Please fill in all required fields and select a file",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setIsUploading(true);
-
-    try {
-      // Upload file to Supabase Storage
-      const fileExt = uploadData.file.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).slice(2)}.${fileExt}`;
-      const filePath = `${user.id}/${fileName}`;
-
-      const { data: uploadData_, error: uploadError } = await supabase.storage
-        .from('notes')
-        .upload(filePath, uploadData.file);
-
-      if (uploadError) throw uploadError;
-
-      // Get public URL for the uploaded file
-      const { data: { publicUrl } } = supabase.storage
-        .from('notes')
-        .getPublicUrl(filePath);
-
-      // Create note record in the database
-      const { error: dbError } = await supabase
-        .from('notes')
-        .insert({
-          title: uploadData.title,
-          subject: uploadData.subject,
-          description: uploadData.description,
-          file_url: publicUrl,
-          file_type: uploadData.file.type,
-          file_size: uploadData.file.size,
-          user_id: user.id
-        });
-
-      if (dbError) throw dbError;
-
-      toast({
-        title: "Success!",
-        description: "Your notes have been uploaded successfully",
-      });
-
-      setIsUploadModalOpen(false);
-      setUploadData({
-        title: '',
-        subject: '',
-        description: '',
-        file: null
-      });
-    } catch (error) {
-      console.error('Upload error:', error);
-      toast({
-        title: "Upload failed",
-        description: "There was an error uploading your notes. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const notes = [
+  // Mock data for the dashboard
+  const mockResources = [
     {
       id: 1,
-      title: 'Calculus I - Derivatives and Limits',
-      subject: 'Mathematics',
-      author: 'Sarah Johnson',
-      university: 'UC Berkeley',
-      uploadDate: '2024-01-15',
-      downloads: 245,
+      title: "Advanced Calculus Notes",
+      subject: "Mathematics",
+      description: "Comprehensive notes covering differential and integral calculus.",
       rating: 4.8,
-      fileType: 'PDF',
-      fileSize: '2.3 MB'
+      downloads: 245,
+      uploadedBy: "student123",
+      dateUploaded: "2024-01-15"
     },
     {
       id: 2,
-      title: 'Introduction to Psychology - Chapter 1-5',
-      subject: 'Psychology',
-      author: 'Michael Chen',
-      university: 'Stanford University',
-      uploadDate: '2024-01-12',
-      downloads: 189,
-      rating: 4.6,
-      fileType: 'PDF',
-      fileSize: '1.8 MB'
+      title: "Physics Lab Reports",
+      subject: "Physics",
+      description: "Collection of lab reports for first-year physics experiments.",
+      rating: 4.5,
+      downloads: 156,
+      uploadedBy: "physics_pro",
+      dateUploaded: "2024-01-10"
     },
     {
       id: 3,
-      title: 'Organic Chemistry Lab Reports',
-      subject: 'Chemistry',
-      author: 'Emily Rodriguez',
-      university: 'MIT',
-      uploadDate: '2024-01-10',
-      downloads: 156,
+      title: "Chemistry Study Guide",
+      subject: "Chemistry",
+      description: "Study guide for organic chemistry final exam preparation.",
       rating: 4.9,
-      fileType: 'PDF',
-      fileSize: '3.1 MB'
-    },
-    {
-      id: 4,
-      title: 'Computer Science Algorithms Notes',
-      subject: 'Computer Science',
-      author: 'Alex Wang',
-      university: 'Harvard University',
-      uploadDate: '2024-01-08',
-      downloads: 298,
-      rating: 4.7,
-      fileType: 'PDF',
-      fileSize: '4.2 MB'
+      downloads: 389,
+      uploadedBy: "chem_master",
+      dateUploaded: "2024-01-08"
     }
   ];
 
-  const subjects = ['Mathematics', 'Psychology', 'Chemistry', 'Computer Science', 'Physics', 'Biology'];
+  const subjects = ['all', 'Mathematics', 'Physics', 'Chemistry', 'Biology', 'Computer Science'];
 
-  const filteredNotes = notes.filter(note => {
-    const matchesSearch = note.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         note.subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         note.author.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesSubject = selectedSubject === 'all' || note.subject === selectedSubject;
+  const filteredResources = mockResources.filter(resource => {
+    const matchesSearch = resource.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         resource.description.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSubject = selectedSubject === 'all' || resource.subject === selectedSubject;
     return matchesSearch && matchesSubject;
   });
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Header */}
       <header className="bg-white shadow-sm border-b">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <div className="flex items-center space-x-2">
-              <BookOpen className="w-8 h-8 text-blue-600" />
-              <span className="text-2xl font-bold text-gray-900">StudyShare</span>
+            <div className="flex items-center">
+              <div className="flex-shrink-0 flex items-center">
+                <BookOpen className="h-8 w-8 text-blue-600" />
+                <span className="ml-2 text-xl font-bold text-gray-900">StudyShare</span>
+              </div>
             </div>
             
             <div className="flex items-center space-x-4">
-              <Button 
-                variant="outline" 
-                size="sm"
-                onClick={() => setIsUploadModalOpen(true)}
-              >
-                <Upload className="w-4 h-4 mr-2" />
-                Upload Notes
-              </Button>
               <div className="flex items-center space-x-2">
-                <User className="w-5 h-5 text-gray-600" />
-                <span className="text-sm text-gray-700">
-                  {userProfile ? `${userProfile.first_name} ${userProfile.last_name}` : 'Loading...'}
-                </span>
+                <User className="h-5 w-5 text-gray-400" />
+                <span className="text-sm text-gray-700">{user?.username}</span>
               </div>
-              <Button variant="ghost" size="sm" onClick={handleSignOut}>
-                <LogOut className="w-4 h-4" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleSignOut}
+                className="flex items-center space-x-1"
+              >
+                <LogOut className="h-4 w-4" />
+                <span>Sign out</span>
               </Button>
             </div>
           </div>
         </div>
       </header>
 
-      <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>Upload Study Notes</DialogTitle>
-            <DialogDescription>
-              Share your notes with other students. Supported formats: PDF, JPEG, PNG
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="grid gap-4 py-4">
-            <div className="grid gap-2">
-              <Label htmlFor="title">Title</Label>
-              <Input
-                id="title"
-                value={uploadData.title}
-                onChange={(e) => setUploadData(prev => ({ ...prev, title: e.target.value }))}
-                placeholder="e.g., Calculus I - Chapter 3 Notes"
-              />
+      {/* Main Content */}
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome Section */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">
+            Welcome back, {user?.username}!
+          </h1>
+          <p className="text-gray-600">
+            Discover and share academic resources with your fellow students.
+          </p>
+        </div>
+
+        {/* Search and Filter Section */}
+        <div className="bg-white rounded-lg shadow-sm border p-6 mb-8">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
+                <Input
+                  placeholder="Search for study materials, notes, or resources..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
             </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="subject">Subject</Label>
-              <Select
-                value={uploadData.subject}
-                onValueChange={(value) => setUploadData(prev => ({ ...prev, subject: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Select a subject" />
+            <div className="flex gap-2">
+              <Select value={selectedSubject} onValueChange={setSelectedSubject}>
+                <SelectTrigger className="w-48">
+                  <Filter className="h-4 w-4 mr-2" />
+                  <SelectValue placeholder="Filter by subject" />
                 </SelectTrigger>
                 <SelectContent>
                   {subjects.map(subject => (
                     <SelectItem key={subject} value={subject}>
-                      {subject}
+                      {subject === 'all' ? 'All Subjects' : subject}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
+              <Button className="flex items-center space-x-2">
+                <Upload className="h-4 w-4" />
+                <span>Upload Resource</span>
+              </Button>
             </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="description">Description</Label>
-              <Textarea
-                id="description"
-                value={uploadData.description}
-                onChange={(e) => setUploadData(prev => ({ ...prev, description: e.target.value }))}
-                placeholder="Add a brief description of your notes..."
-              />
-            </div>
-            
-            <div className="grid gap-2">
-              <Label htmlFor="file">File</Label>
-              <Input
-                id="file"
-                type="file"
-                accept=".pdf,.jpg,.jpeg,.png"
-                onChange={handleFileChange}
-              />
-              <p className="text-sm text-gray-500">
-                Maximum file size: 10MB
-              </p>
-            </div>
-          </div>
-          
-          <div className="flex justify-end gap-4">
-            <DialogClose asChild>
-              <Button variant="outline">Cancel</Button>
-            </DialogClose>
-            <Button onClick={handleUpload} disabled={isUploading}>
-              {isUploading ? 'Uploading...' : 'Upload'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">
-            Welcome back, {userProfile?.first_name || 'User'}!
-          </h1>
-          <p className="text-gray-600">
-            {userProfile?.university ? `Student at ${userProfile.university}` : 'Discover and share study materials with students worldwide'}
-          </p>
-        </div>
-
-        <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-          <div className="flex flex-col md:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-              <Input
-                placeholder="Search for notes, subjects, or authors..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-            <Select value={selectedSubject} onValueChange={setSelectedSubject}>
-              <SelectTrigger className="w-full md:w-48">
-                <Filter className="w-4 h-4 mr-2" />
-                <SelectValue placeholder="Filter by subject" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Subjects</SelectItem>
-                {subjects.map(subject => (
-                  <SelectItem key={subject} value={subject}>{subject}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Notes</p>
-                  <p className="text-2xl font-bold text-gray-900">1,247</p>
-                </div>
-                <BookOpen className="w-8 h-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Your Uploads</p>
-                  <p className="text-2xl font-bold text-gray-900">12</p>
-                </div>
-                <Upload className="w-8 h-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Downloads</p>
-                  <p className="text-2xl font-bold text-gray-900">89</p>
-                </div>
-                <Download className="w-8 h-8 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card>
-            <CardContent className="p-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Avg Rating</p>
-                  <p className="text-2xl font-bold text-gray-900">4.8</p>
-                </div>
-                <Star className="w-8 h-8 text-yellow-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
+        {/* Resources Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredNotes.map(note => (
-            <Card key={note.id} className="hover:shadow-lg transition-shadow cursor-pointer">
+          {filteredResources.map((resource) => (
+            <Card key={resource.id} className="hover:shadow-md transition-shadow">
               <CardHeader>
-                <div className="flex justify-between items-start mb-2">
-                  <Badge variant="secondary">{note.subject}</Badge>
-                  <div className="flex items-center space-x-1">
-                    <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                    <span className="text-sm text-gray-600">{note.rating}</span>
+                <div className="flex justify-between items-start">
+                  <Badge variant="secondary" className="mb-2">
+                    {resource.subject}
+                  </Badge>
+                  <div className="flex items-center space-x-1 text-sm text-gray-500">
+                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                    <span>{resource.rating}</span>
                   </div>
                 </div>
-                <CardTitle className="text-lg leading-tight">{note.title}</CardTitle>
-                <CardDescription>
-                  By {note.author} • {note.university}
+                <CardTitle className="text-lg">{resource.title}</CardTitle>
+                <CardDescription className="text-sm">
+                  {resource.description}
                 </CardDescription>
               </CardHeader>
-              
               <CardContent>
-                <div className="flex justify-between items-center text-sm text-gray-600 mb-4">
+                <div className="flex justify-between items-center text-sm text-gray-500 mb-4">
                   <div className="flex items-center space-x-1">
-                    <Clock className="w-4 h-4" />
-                    <span>{note.uploadDate}</span>
+                    <Clock className="h-4 w-4" />
+                    <span>{resource.dateUploaded}</span>
                   </div>
-                  <div className="flex items-center space-x-1">
-                    <Eye className="w-4 h-4" />
-                    <span>{note.downloads} downloads</span>
-                  </div>
+                  <span>{resource.downloads} downloads</span>
                 </div>
-                
                 <div className="flex justify-between items-center">
-                  <div className="text-sm text-gray-500">
-                    {note.fileType} • {note.fileSize}
-                  </div>
-                  <Button size="sm" className="bg-blue-600 hover:bg-blue-700">
-                    <Download className="w-4 h-4 mr-1" />
+                  <span className="text-sm text-gray-600">by {resource.uploadedBy}</span>
+                  <Button size="sm" variant="outline">
                     Download
                   </Button>
                 </div>
@@ -445,14 +187,23 @@ const Dashboard = () => {
           ))}
         </div>
 
-        {filteredNotes.length === 0 && (
+        {/* Empty State */}
+        {filteredResources.length === 0 && (
           <div className="text-center py-12">
-            <BookOpen className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-            <h3 className="text-lg font-medium text-gray-900 mb-2">No notes found</h3>
-            <p className="text-gray-600">Try adjusting your search or filter criteria</p>
+            <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              No resources found
+            </h3>
+            <p className="text-gray-500 mb-4">
+              Try adjusting your search terms or filter settings.
+            </p>
+            <Button>
+              <Upload className="h-4 w-4 mr-2" />
+              Upload the first resource
+            </Button>
           </div>
         )}
-      </div>
+      </main>
     </div>
   );
 };
